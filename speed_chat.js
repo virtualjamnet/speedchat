@@ -1,7 +1,7 @@
 /**
  * @author Ken Murray
  * @version 1.0
-
+ * am_chat - live video chat.
  *  cd /data/www/mstreams.webcamclub.com/current/nodeapps
  *	node --expose-gc --max-old-space-size=2048 am_chat.js
  */
@@ -36,7 +36,6 @@ server_mem         = 0,
 server_rss         = 0,
 server_heapTotal   = 0,
 server_heapUsed    = 0,
-
 serverPort         = 8002,
 frameRate          = "4",
 audiocount         = 0,
@@ -44,21 +43,28 @@ count              = 0,
 zeroPadDef         = 100000,
 zeroPadCnt         = 0,
 zeroPadAudioCnt    = 0,
-
-PATH               = "/data/www/snaps/",
 applicationData    = null,
 data_len           = null,
-usernames          = {},
 rooms              = [],
 found              = false,
 img,data,buf,imgdata,audiobuf,audioBlob,audiodata,cpus,totalTime,totalIdle,cpu,CPUload,vhost,evt,ops,ops3,len,lenres,arrlen,my_str,my_array;
 
-userList = new Array();
+usernames = {},
+userList = [];
+
+getIOInstance = function() {
+	try {
+  		return io;
+	}
+	catch ( e ) {
+		amchat.trace( "getIOInstance catch e = " + e );
+	}
+};
 
 require("./includes/am.livechat.js");
 amchat = new amLiveChat();
 amchat.app = 'amchat';
-amchat.version = '1.0.0.1';
+amchat.version = '1.0.0.2';
 
 app.use(express.static('static'));
 
@@ -70,60 +76,8 @@ app.all('*', function(req, res, next) {
    next();
 });
 
-/* HLS manifest parser */
-app.get('/video.m3u8', function (req, res) {
-	try {
-		if ( req != null && req !== "" && req.query != null && req.query !== "" && req.query.showtype != null && req.query.showtype !== "" && req.query.modelName != null && req.query.modelName !== "" ) {
-			if ( fs.existsSync( PATH + req.query.showtype + '/' + req.query.modelName + '/video.m3u8' ) ) {
-				res.sendFile( PATH + req.query.showtype + '/' + req.query.modelName + '/video.m3u8');
-			}
-			else {
-				amchat.trace ("app.get m3u8 NOT found");
-			}
-		}
-		else {
-			amchat.trace ("app.get m3u8 request param WAS null");
-		}
-	}
-	catch ( e ) { 
-		amchat.trace ("app.get m3u8 catch e = " + e );
-	}
-});
-
-/* HLS segments parsers */
-app.get('/video*.ts', function (req, res) {
-	try {
-		if ( req.originalUrl.indexOf(".ts?") != -1 ) {
-
-			my_str = req.originalUrl;
-        	my_array = my_str.split( ".ts?" );
-			
-			//amchat.trace ("current segment = " + my_array[0] );
-			
-			if ( req != null && req !== "" && req.query != null && req.query !== "" && req.query.showtype != null && req.query.showtype !== "" && req.query.modelName != null && req.query.modelName !== "" ) {
-				if ( fs.existsSync( PATH + req.query.showtype + '/' + req.query.modelName + my_array[0] + '.ts?showtype=fs&modelName=' + req.query.modelName ) ) {
-					res.sendFile( PATH + req.query.showtype + '/' + req.query.modelName + my_array[0] + '.ts?showtype=fs&modelName=' + req.query.modelName );
-				}
-				else {
-					amchat.trace ("app.get "+my_array[0]+" NOT found");
-				}
-			}
-			else {
-				amchat.trace ("app.get "+my_array[0]+" request param WAS null");
-			}
-		}
-	}
-	catch ( e ) { 
-		amchat.trace ("app.get ts catch e = " + e );
-	}
-});
-
-var RawDeflate = require('./rawinflate');
-app.use('/rawinflate', amchat.callback);
-
 io.sockets.on('connection', function onConnect(socket) {
-	socket.emit('message','server connected!');
-
+	//socket.emit('message','server connected!');
 	socket.on('adduser', function onAddUser(client) {
 		try {
 			//amchat.trace( "adduser FIRED client.username = " + client.username );
@@ -133,28 +87,31 @@ io.sockets.on('connection', function onConnect(socket) {
             }
 			
 			socket.username = client.username;
-			amchat.trace("socket.username = " + client.username);
+			//amchat.trace("socket.username = " + client.username);
 			
             socket.userID = client.userID;
-            amchat.trace("socket.userID = " + client.userID);
+            //amchat.trace("socket.userID = " + client.userID);
 
             socket.sessionName = client.sessionName;
-			amchat.trace("socket.sessionName = " + client.sessionName);
+			//amchat.trace("socket.sessionName = " + client.sessionName);
 			
             socket.session_id = client.session_id;
-			amchat.trace("socket.session_id = " + client.session_id);
+			//amchat.trace("socket.session_id = " + client.session_id);
 			
             socket.gateway = client.gateway;
-			amchat.trace("socket.gateway = " + client.gateway);
+			//amchat.trace("socket.gateway = " + client.gateway);
 			
             socket.room = client.room;
-			amchat.trace("socket.room = " + socket.room);
+			//amchat.trace("socket.room = " + socket.room);
             
             socket.usertype = client.usertype;
-			amchat.trace("socket.usertype = " + client.usertype);
+			//amchat.trace("socket.usertype = " + client.usertype);
 			
             socket.type = client.usertype;
-			amchat.trace("socket.type = " + socket.type );
+			//amchat.trace("socket.type = " + socket.type );
+			
+			socket.appname = client.appname;
+			//amchat.trace("socket.appname = " + socket.appname );
 
 			socket.count = 0;
 			socket.audiocount = 0;
@@ -166,11 +123,8 @@ io.sockets.on('connection', function onConnect(socket) {
 				socket.volume = '0.5';
 			}
 
-			amchat.trace("socket.volume = " + socket.volume );
-			
 			socket.recording = false;
-			//amchat.trace("socket.recording = " + socket.recording );
-			
+
 			if ( client.useOgg != null && client.useOgg != "" ) {
 				socket.useOgg = client.useOgg;
 			}
@@ -178,29 +132,27 @@ io.sockets.on('connection', function onConnect(socket) {
 				socket.useOgg = false;
 			}
 
-			amchat.trace("socket.useOgg = " + socket.useOgg );
-
 			if ( client.frameRate != null && client.frameRate != "" ) {
 				socket.frameRate = client.frameRate;
 			}
 			else {
 				socket.frameRate = "4";
 			}
-			amchat.trace("socket.frameRate = " + socket.frameRate );
-			
+
 			if ( client.renderHLS != null && client.renderHLS != "" ) {
 				socket.renderHLS = client.renderHLS;
 			}
 			else {
 				socket.renderHLS = false;
 			}
-			amchat.trace("socket.renderHLS = " + socket.renderHLS );
-			
+
 			found = false;
 			// Determine if the room exists.
 			for ( var i in rooms ) {
-				if ( rooms[i] == client.room ) {
-					found = true;
+				if ( rooms.hasOwnProperty(i) ) {
+					if ( rooms[i] == client.room ) {
+						found = true;
+					}
 				}
 			}
 			i = null;
@@ -211,29 +163,37 @@ io.sockets.on('connection', function onConnect(socket) {
 			}
 			
 			if ( client.username != null ) {
-				userList.push( client.username );
-						
-				userList[ client.username ] = {};
-				userList[ client.username ] = client;
-			
-				userList[ client.username ].session_id = socket.session_id;
-				userList[ client.username ].username = socket.username;
-				userList[ client.username ].roomID = socket.id;
-	
-				userList[ client.username ].socket = socket;
-				userList[ client.username ]['clients'] = [];
-				userList[ client.username ]['clients'].push( socket );
+				if ( client.appname === 'amChatConnMember' && client.usertype == '4' ) {
+					userList.push( client.username );
+					userList[ client.username ] = {};
+					userList[ client.username ] = client;
 				
-				amchat.trace("userList[ client.username ].roomID = " + userList[ client.username ].roomID);
-	
-				// check if a temp dir exists if not, create one.
-				amchat.mkdirSync( fs, PATH + 'fs/' + socket.room, socket.useOgg );
+					userList[ client.username ].session_id = socket.session_id;
+					userList[ client.username ].username = socket.username;
+					userList[ client.username ].roomID = socket.id;
+					
+					userList[ client.username ].keepalive_failures = 0;
+					userList[ client.username ].keepalive_checks = 3;
+					userList[ client.username ].keepalive_check_ivl = -1;
+		
+					userList[ client.username ].socket = socket;
+					userList[ client.username ]['clients'] = [];
+					userList[ client.username ]['clients'].push( socket );
+
+					amchat.member_connect( client, io );
+				}
+				else {
+					if ( client.appname === 'AM Chat Module' && client.usertype == '8' ) {
+						amchat.member_connect( client, io );
+					}
+					else {
+						client.socket.emit('access_denied_msg');
+						client.socket.disconnect(true);
+					}
+				}
 				
 				socket.join(client.room);
 				socket.emit('onadduser','adding user: ' + client.username + " room: " + client.room );
-				
-				
-				amchat.member_connect( client, io );
 			}
 		}
 		catch ( e ) {
@@ -241,9 +201,46 @@ io.sockets.on('connection', function onConnect(socket) {
 		}
 	});
 	
+	socket.on('on_keepalive_check', function onHeartBeat( username, heartbeat ) {
+        try {
+            //amchat.trace( "socket - on_keepalive_check FIRED" );
+            amchat.on_keepalive_check ( username, heartbeat );
+        }
+        catch( e ) {
+            wccUtilService.trace("on_keepalive_check catch e =  " + e,'error' );
+        }
+    });
+
+	socket.on('WatchUser', function onWatchUser( roomIndex, userToWatch ) {
+        try {
+			if ( userList[userToWatch] != null && userList[userToWatch].socket ) {
+           	 	userList[userToWatch].socket.emit( 'onWatchingMe', roomIndex, socket.username );
+			}
+			else {
+				amchat.trace("WatchUser user socket WAS null");
+			}
+        }
+        catch (e) {
+            amchat.trace("WatchUser catch e = " + e, 'error');
+        }
+    });
+	
+	socket.on('RemoveWatcher', function onRemoveWatcher( roomIndex, userToRemove ) {
+        try {
+			if ( userList[userToRemove] != null && userList[userToRemove].socket ) {
+           	 	userList[userToRemove].socket.emit( 'onRemoveWatcher', roomIndex, socket.username );
+			}
+			else {
+				amchat.trace("RemoveWatcher user socket WAS null");
+			}
+        }
+        catch (e) {
+            amchat.trace("RemoveWatcher catch e = " + e, 'error');
+        }
+    });
+	
 	socket.on('msgFromClient', function onMsgFromClient(msg) {
         try {
-			//amchat.trace("msgFromClient user socket.username " + socket.username );
 			io.sockets.in(socket.room).emit('msgFromServer', socket.username , msg );
         }
         catch (e) {
@@ -251,14 +248,10 @@ io.sockets.on('connection', function onConnect(socket) {
         }
     });
 
-	socket.on('whisperTo', function onWhisperTo(username, msg) {
+	socket.on('whisperTo', function onWhisperTo(username, msg, sender) {
         try {
 			if ( userList[username] != null && userList[username].socket ) {
-				amchat.trace("whisperTo user socket.username " + socket.username );
-           	 	userList[username].socket.emit('setHistory', username, msg);
-			}
-			else {
-				amchat.trace("whisperTo user socket WAS null");
+           	 	userList[username].socket.emit('setHistory', username, msg, sender);
 			}
         }
         catch (e) {
@@ -270,19 +263,28 @@ io.sockets.on('connection', function onConnect(socket) {
         try {
 			if ( userList[username] != null && userList[username].socket ) {
 				if ( userList[username].member_info.member_info.is_moderator ) {
-					socket.emit('on_kick_remove_mod', username + " is_moderator");
+					socket.emit('on_kick_remove_mod', username );
+					//amchat.trace("kickTo user is_moderator - abort");
 					return;
 				}
-
-				io.sockets.in(socket.room).emit( 'RemoveUser', username );
 				
-				userList[username].socket.emit('do_kicked_msg');
-				userList[username].socket.disconnect(true);
-				
-				socket.emit('on_kick_remove_user', username );
+				socket.is_moderator = userList[ socket.username ].is_moderator;
+				if ( socket.is_moderator ) {
+					io.sockets.in(socket.room).emit( 'RemoveUser', username );
+					
+					userList[username].socket.emit('do_kicked_msg');
+					userList[username].socket.disconnect(true);
+					
+					socket.emit('on_kick_remove_user', username );
+				}
+				else {
+					//Close this connection for attempting a ban;
+					userList[socket.username].socket.emit('do_banned_msg_2');
+					userList[socket.username].socket.disconnect(true);
+				}
 			}
 			else {
-				amchat.trace("kickTo user socket WAS null");
+				//amchat.trace("kickTo user socket WAS null");
 				socket.emit('on_kick_remove_user', null );
 			}
         }
@@ -291,17 +293,45 @@ io.sockets.on('connection', function onConnect(socket) {
         }
     });
 	
-	socket.on('banTo', function onBanTo(user, reasonToBan, permanent, err) { 
+	socket.on('banTo', function onBanTo(username, reasonToBan, permanent, err) { 
         try {
-            //amchat.BanUser(userList[socket.room]['clients'][j], reasonToBan, permanent);
+			//amchat.trace("banTo username = " + username + " reasonToBan = " + reasonToBan + " permanent = " + permanent );
 			if ( userList[username] != null && userList[username].socket ) {
-				io.sockets.in(socket.room).emit( 'RemoveUser', username );
 				
-				userList[username].socket.emit('do_banned_msg');
-				userList[username].socket.disconnect(true);
+				if ( userList[username].member_info.member_info.is_moderator ) {
+					socket.emit('on_ban_remove_mod', username );
+					//amchat.trace("banTo user is_moderator - abort");
+					return;
+				}
+
+				/*
+				amchat.trace("banTo userList[username].member_info.member_info.username = " + userList[username].member_info.member_info.username );
+				amchat.trace("banTo userList[username].username = " + userList[username].username );
+				amchat.trace("banTo userList[username].ip = " + userList[username].ip );
+				amchat.trace("banTo userList[username].is_moderator = " + userList[ username ].is_moderator );
+				*/
+				
+				socket.is_moderator = userList[ socket.username ].is_moderator;
+
+				if ( socket.is_moderator ) {
+					io.sockets.in(socket.room).emit( 'RemoveUser', username );
+
+					amchat.BanUser(socket, userList[username].ip , userList[username].username, reasonToBan, permanent);
+					
+					userList[username].socket.emit('do_banned_msg');
+					userList[username].socket.disconnect(true);
+					
+					socket.emit('on_ban_remove_user', username );
+				}
+				else {
+					//Close this connection for attempting a ban;
+					userList[socket.username].socket.emit('do_banned_msg_2');
+					userList[socket.username].socket.disconnect(true);
+				}
 			}
 			else {
-				amchat.trace("banTo user socket WAS null");
+				//amchat.trace("banTo user socket WAS null");
+				socket.emit('on_ban_remove_user', null );
 			}
         }
         catch (e) {
@@ -311,24 +341,26 @@ io.sockets.on('connection', function onConnect(socket) {
 	
 	socket.on('GetUserList', function onGetUserList( roomIndex ) {
         try {
-			amchat.trace("GetUserList userList.length " + userList.length );
+			//amchat.trace("GetUserList userList.length " + userList.length );
 			for ( var i in userList ) {
-				if ( userList[i].socket != null ) {
-					var res = new Object();
-					res[ "list" ] = new Object();
-					
-					res[ "list" ][ i ] = new Object();
-					res[ "list" ][ i ][ "username" ] = userList[i].member_info.member_info.username;
-					res[ "list" ][ i ][ "sex" ] = userList[i].member_info.member_info.sex;
-					res[ "list" ][ i ][ "audio" ] = userList[i].audio;
-					res[ "list" ][ i ][ "video" ] = userList[i].video;
-					res[ "list" ][ i ][ "image_url" ] = userList[i].member_info.member_info.image_url;
-					res[ "list" ][ i ][ "profile_url" ] = userList[i].member_info.member_info.profile_url;
-					res[ "list" ][ i ][ "userID" ] = userList[i].member_info.member_info.id;
-					
-					res[ "list" ][ i ][ "member_info" ] = userList[i].member_info;
-					
-					io.sockets.in(socket.room).emit( 'onGetUserList', res );
+				if ( userList.hasOwnProperty(i) ) {
+					if ( userList[i].socket != null ) {
+						var res = new Object();
+						res[ "list" ] = new Object();
+						
+						res[ "list" ][ i ] = new Object();
+						res[ "list" ][ i ][ "username" ] = userList[i].member_info.member_info.username;
+						res[ "list" ][ i ][ "sex" ] = userList[i].member_info.member_info.sex;
+						res[ "list" ][ i ][ "audio" ] = userList[i].audio;
+						res[ "list" ][ i ][ "video" ] = userList[i].video;
+						res[ "list" ][ i ][ "image_url" ] = userList[i].member_info.member_info.image_url;
+						res[ "list" ][ i ][ "profile_url" ] = userList[i].member_info.member_info.profile_url;
+						res[ "list" ][ i ][ "userID" ] = userList[i].member_info.member_info.id;
+						
+						res[ "list" ][ i ][ "member_info" ] = userList[i].member_info;
+						
+						io.sockets.in(socket.room).emit( 'onGetUserList', res );
+					}
 				}
 			}
 			i = null;
@@ -340,20 +372,55 @@ io.sockets.on('connection', function onConnect(socket) {
 	
 	socket.on('ToggleAV', function onToggleAV(audio, video) {
         try {
-			amchat.trace("ToggleAV user socket.username " + socket.username );
-			amchat.trace("ToggleAV user audio " + audio );
-			amchat.trace("ToggleAV user video " + video );
-			
 			if ( userList[ socket.username ] != null ) {
-				//update member object
 				userList[ socket.username ].audio = audio;
 				userList[ socket.username ].video = video;
 			}
-			
 			io.sockets.in(socket.room).emit('onToggleAV', socket.username , socket.id, audio, video );
         }
         catch (e) {
             amchat.trace("msgFromClient catch e = " + e, 'error');
+        }
+    });
+	
+	/* If using socket MJPG method */
+	socket.on('sendvideo', function onSendVideo(bArray) {
+        try {
+			if ( bArray != null && bArray[0] != null && bArray[0].frames != null ) {
+				socket.snaps = true;
+				if ( bArray[0].fpsIVL != null ) {
+					socket.frameRate = ( 1000 / parseFloat( bArray[0].fpsIVL ) );
+				}
+				if ( bArray[0].frames[0].indexOf("data:image" ) != -1 ) {
+					socket.broadcast.to(socket.room).emit('updatevideo', socket.username, bArray);
+					//io.sockets.in(socket.room).emit('updatevideo', socket.username , bArray );
+				}
+			}
+        }
+        catch (e) {
+            amchat.trace("sendvideo catch e = " + e, 'error');
+        }
+    });
+	
+	/* If using socket Audio segment method */
+	socket.on('sendaudio', function onSendAudio(bArray) {
+        try {
+			if ( bArray != null && bArray[0] != null && bArray[0].audioBlob != null ) {
+				if ( bArray[0].audioBlob.indexOf("data:audio" ) != -1 ) {
+					socket.broadcast.to(socket.room).emit('updateaudio', socket.username, bArray);
+					//io.sockets.in(socket.room).emit('updateaudio', socket.username , bArray );
+				}
+			}
+        }
+        catch (e) {
+             amchat.trace("updateaudio catch e = " + e, 'error');
+        }
+    });
+	
+	socket.on("closeMe", function onCloseMe() {
+        amchat.trace("closeMe FIRED socket = " + socket );
+        if ( typeof socket == "object" && socket !== null ) {
+            socket.disconnect(true);
         }
     });
 
@@ -364,80 +431,14 @@ io.sockets.on('connection', function onConnect(socket) {
 				delete socket;
 				return;
 			}
-	
-			io.sockets.in(socket.room).emit( 'RemoveUser', socket.username );
-			
-			for (var i in userList) {
-				if (userList[i] == socket.username) {
-					userList.splice(i, 1);
-					--i;
-					break;
-				}
-			}
-			i = null;
-			
-			for ( var i in usernames ) {
-				if ( usernames[i] == socket.username ) {
-					delete usernames[i];
-					--i;
-				}
-			}
-			i = null;
-				
+
+			amchat.removeUserFromList( io, socket.room, socket.username );
+
 			socket.leave(socket.room);
 			delete socket;
-				
-			/*
-				socket.feedStream = false;
-				if ( socket.ffmpeg_process ) {
-					try {
-						socket.ffmpeg_process.stdin.end();
-						socket.ffmpeg_process.kill('SIGINT');
-					}
-					catch(e) {
-						console.warn('killing ffmpeg process attempt failed...');
-					}
-				}
-				
-				socket.feedStream3 = false;
-				if ( socket.ffmpeg_process3 ) {
-					try {
-						socket.ffmpeg_process3.stdin.end();
-						socket.ffmpeg_process3.kill('SIGINT');
-					}
-					catch(e) {
-						console.warn('killing ffmpeg_process3 attempt failed...');
-					}
-				}
-	
-				if ( socket.renderHLS ) {
-					socket.feedStream2 = false;
-					if ( socket.ffmpeg_process_record ) {
-						try {
-							socket.ffmpeg_process_record.stdin.end();
-							socket.ffmpeg_process_record.kill('SIGINT');
-						}
-						catch(e) {
-							console.warn('killing ffmpeg process attempt failed...');
-						}
-					}
-					
-					if ( socket.snaps ) {
-						//do nothing...
-						//amchat.trace('disconnect socket.snaps WAS true;');
-					}
-					else {
-						//amchat.trace('disconnect FIRED delete all of the temp files');
-						setTimeout( amchat.deleteFiles, 5000, fs, PATH + "fs/" + socket.username + "/", socket.username );
-					}
-				}
-				
-				socket.leave(socket.room);
-				delete socket;
-			*/
 		}
         catch (e) {
-            amchat.trace("banTo catch e = " + e, 'error');
+            amchat.trace("disconnect catch e = " + e, 'error');
         }
 	});
 	
@@ -533,64 +534,4 @@ function getServerLoad() {
         CPU: CPUload,
         mem: 100 - Math.round(os.freemem() / os.totalmem() * 100)
     }
-}
-
-/* compression and base64 handlers */
-function decode( str ) {
-    return decodeURIComponent( escape( RawDeflate.inflate( _decode( str ) ) ) );
-}
-
-var _PADCHAR = "=",
-	_ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
-	_VERSION = "1.0";
-
-function _getbyte64(s, i) {
-	var idx = _ALPHA.indexOf(s.charAt(i));
-	if (idx === -1) {
-		throw "Cannot decode base64"
-	}
-	return idx
-}
-
-function _decode(s) {
-	var pads = 0,
-		i, b10, imax = s.length,
-		x = [];
-	s = String(s);
-	if (imax === 0) {
-		return s
-	}
-	if (imax % 4 !== 0) {
-		throw "Cannot decode base64"
-	}
-	if (s.charAt(imax - 1) === _PADCHAR) {
-		pads = 1;
-		if (s.charAt(imax - 2) === _PADCHAR) {
-			pads = 2
-		}
-		imax -= 4
-	}
-	for (i = 0; i < imax; i += 4) {
-		b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12) | (_getbyte64(s, i + 2) << 6) | _getbyte64(s, i + 3);
-		x.push(String.fromCharCode(b10 >> 16, (b10 >> 8) & 255, b10 & 255))
-	}
-	switch (pads) {
-		case 1:
-			b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12) | (_getbyte64(s, i + 2) << 6);
-			x.push(String.fromCharCode(b10 >> 16, (b10 >> 8) & 255));
-			break;
-		case 2:
-			b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12);
-			x.push(String.fromCharCode(b10 >> 16));
-			break
-	}
-	return x.join("")
-}
-
-function _getbyte(s, i) {
-	var x = s.charCodeAt(i);
-	if (x > 255) {
-		throw "INVALID_CHARACTER_ERR: DOM Exception 5"
-	}
-	return x
 }
