@@ -50,9 +50,69 @@ amLiveChat = (function () {
             }
 		};
 		
+		this.BanUser = function ( client, clientToBanIP, clientToBanName, reasonToBan, permanent ) {
+			try {
+				thisChat.trace( "BanUser clientToBanIP = "+ clientToBanIP );
+				thisChat.trace( "BanUser clientToBanName = "+ clientToBanName );
+				thisChat.trace( "BanUser username = "+ client.username );
+				thisChat.trace( "BanUser userID = "+ client.userID );
+				thisChat.trace( "BanUser session_id = "+ client.session_id );	
+				thisChat.trace( "BanUser client.is_moderator = "+ client.is_moderator );
+				
+				if ( !client.is_moderator ){
+					thisChat.trace( client.username + " is not a moderator, aborting admin function" );
+					return;
+				}
+				else {
+					thisChat.trace( client.username + " is a moderator, continue with ban!" );
+				}
+
+				var obj = [ clientToBanIP, clientToBanName, client.username, client.userID, client.session_id, reasonToBan ];
+				post_data = JSON.stringify({"serviceName": "AMService", "methodName": "BanUser", "parameters": obj});
+			
+				options = {
+					host: client.gateway,
+					port: '80',
+					//path: 'http://'+client.gateway+'/flashservices/gateway2.php?m=BanUser&'+client.sessionName+'='+ client.session_id,
+					path: "http://"+client.gateway+"/gateway.php?contentType=application/json",
+					method: 'POST',
+					
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded',
+						'Content-Length': post_data.length
+					}
+				};
+				
+				req = http.request(options, function(response) {
+					response.on('data', function(data) {
+						try {
+							thisChat.trace( "BanUser RESULT data " + data );
+						}
+						catch( e ) {
+							thisChat.trace("BanUser response catch e =  " + e, 'error' );
+						}
+					});
+					
+					response.on('end', function() {
+						//
+					});
+				});
+				
+				req.on('error', function(e) {
+					 thisChat.trace("BanUser req error " + e , 'error');
+				});
+				
+				req.write(post_data);
+				req.end();
+			}
+            catch ( e ) {
+                thisChat.trace("BanUser catch e = " + e );
+            }
+		};
+		
 		this.member_connect = function ( client , io ) {
 			try {
-				thisChat.trace( "member_connect client.gateway "+ client.gateway );
+				//thisChat.trace( "member_connect client.gateway "+ client.gateway );
 				var obj = [client.session_id, "member",  client.ip];
 				post_data = JSON.stringify({"serviceName": "AMService", "methodName": "member_connect", "parameters": obj});
 				
@@ -84,6 +144,7 @@ amLiveChat = (function () {
 							
 							member_info = JSON.parse(result);
 							
+							/*
 							thisChat.trace( "************************************ member_connect_Result ************************************" );
 							thisChat.trace("member_connect_Result member_info.username : " + member_info.member_info.username);
 							thisChat.trace("member_connect_Result member_info.id : " + member_info.member_info.id);
@@ -91,7 +152,7 @@ amLiveChat = (function () {
 							thisChat.trace("member_connect_Result member_info.is_moderator : " + member_info.member_info.is_moderator);
 							thisChat.trace("member_connect_Result is_banned : " + member_info.is_banned);
 							
-							/*
+							
 							thisChat.trace("member_connect_Result member_info.age : " + member_info.member_info.age);
 							thisChat.trace("member_connect_Result member_info.sex : " + member_info.member_info.sex);
 							thisChat.trace("member_connect_Result member_info.sex_pref : " + member_info.member_info.sex_pref);
@@ -113,16 +174,25 @@ amLiveChat = (function () {
 								client.socket.disconnect(true);
 							}
 							else if ( ( member_info.member_info.status == null ) || ( member_info.member_info.status < MIN_PAID_STATUS ) ) {
-								thisChat.trace( "!! user is not a paying member - " + client.username + " !!" );
-								client.socket.emit('access_denied_msg');
-								client.socket.disconnect(true);
+								if ( client.appname === 'AM Chat Module' && client.usertype == '8' ) {
+									io.sockets.in(client.room).emit('AddGuest', client.username, client.userID );
+								}
+								else {
+									//thisChat.trace( "!! user is not a paying member - " + client.username + " !!" );
+									client.socket.emit('access_denied_msg');
+									client.socket.disconnect(true);
+								}
 							}
 							else {
-								thisChat.trace("member_connect_Result calling AddUser for " + client.username);
+								//thisChat.trace("member_connect_Result calling AddUser for " + client.username);
 								userList[ client.username ].member_info = member_info;
 								userList[ client.username ].audio = client.audio;
 								userList[ client.username ].video = client.video;
+								userList[ client.username ].is_moderator = member_info.member_info.is_moderator;
 								io.sockets.in(client.room).emit('AddUser', member_info, client.audio, client.video );
+						
+								clearInterval( userList[ client.username ].keepalive_check_ivl );
+								userList[ client.username ].keepalive_check_ivl = setInterval( thisChat.keepalive_check, 30000, client );
 							}
 						}
 						catch( e ) {
@@ -145,15 +215,106 @@ amLiveChat = (function () {
             catch ( e ) {
                 thisChat.trace("member_connect catch e = " + e );
             }
-		};
-		
-		this.get_user_list = function ( client ) {
+		 };
+
+		 this.keepalive_check = function( client ) {
 			 try {
-				 //thisChat.trace("get_user_list FIRED" );
-		         if ( client.room != null && userList != null && userList[ client.room ] != null && userList[ client.room ]['clients'] != null ) {
+				 //thisChat.trace("keepalive_check client.username "+ client.username );
+				 for ( var j in userList ) {
+					 if ( userList[j].username != null
+						 && userList[j].username != "undefined"
+						 && userList[j].username == client.username ) {
+	
+						 if ( userList[j].keepalive_failures <= userList[j].keepalive_checks ) {
+							 userList[j].foundResult = false;
+							 ++userList[j].keepalive_failures;
+							 
+							 //thisChat.trace("client.username = " + client.username );
+							 //thisChat.trace("userList[j].username = " + userList[j].username );
+							 //thisChat.trace("userList[j].keepalive_failures = " + userList[j].keepalive_failures );
+							 //thisChat.trace("userList[j].keepalive_checks = " + userList[j].keepalive_checks );
+							 client.socket.emit('heartbeat', client.username);
+						 }
+						 else {
+							 //thisChat.trace( client.username + " must be gone need to clear them from the list else we have a ghost!");
+							 thisChat.removeUserFromList( null, client.room, client.username );
+						 }
+						 break;
+					 }
+				 }
+				 j = null;
+			 }
+			 catch( e ) {
+				 thisChat.trace("zeroPad catch e = "+ e);
+			 }
+		 },
+		 
+		 this.on_keepalive_check = function( username, heartbeat ) {
+             try {
+				 //thisChat.trace( "this.on_keepalive_check username = " + username + " heartbeat = " + heartbeat );
+				 if ( heartbeat == 7 ) {
+					 for ( var j in userList ) {
+						 if ( userList[j].username != null
+							 && userList[j].username != "undefined"
+							 && userList[j].username == username ) {
+		
+							 //thisChat.trace( "on_keepalive_check result was " + heartbeat + " for " +  username + " Setting foundResult to true" );
+							 userList[j].foundResult = true;
+							 userList[j].keepalive_failures = 0;
+							 break;
+						 }
+					 }
+					 j = null;
+				 }
+			 }
+			 catch( e ) {
+				 thisChat.trace("on_keepalive_check catch e = "+ e);
+			 }
+         },
+		 
+		 this.removeUserFromList = function(io, room, usr) {
+			try {
+				//thisChat.trace("removeUserFromList usr = "+ usr);
+				if ( io == null ) {
+					io = getIOInstance();
+				}
+
+				io.sockets.in(room).emit( 'RemoveUser', usr );
+				
+				for (var i in userList) {
+					if ( userList.hasOwnProperty(i) ) {
+						if ( userList[i] == usr ) {
+							clearInterval( userList[ usr ].keepalive_check_ivl );
+							userList.splice(i, 1);
+							--i;
+							break;
+						}
+					}
+				}
+				i = null;
+
+				for ( var j in usernames ) {
+					if ( usernames.hasOwnProperty(j) ) {
+						if ( usernames[j] == usr ) {
+							delete usernames[j];
+							--j;
+						}
+					}
+				}
+				j = null;
+			}
+			catch( e ) {
+				thisChat.trace("removeUserFromList catch e = "+ e);
+			}
+		};
+		 
+		this.get_user_list = function ( client ) {
+			try {
+				//thisChat.trace("get_user_list FIRED" );
+		        if ( client.room != null && userList != null && userList[ client.room ] != null && userList[ client.room ]['clients'] != null ) {
 					 // thisChat.trace("get_user_list client.room " +  client.room );
 					 
-					 for ( var clientId in userList[ client.room ]['clients'] ) {
+					for ( var clientId in userList[ client.room ]['clients'] ) {
 						 var res = new Object();
 						 res[ "list" ] = new Object();
 						 
@@ -164,21 +325,21 @@ amLiveChat = (function () {
 						 thisChat.trace("get_user_list username = " +  userList[ client.room ]['clients'][clientId].username );
 						 
 						 client.emit('get_user_list', res, 0 );
-					 }
-					 //thisChat.trace("room: member_count = " + userList[ client.room ].member_count);
-				 }
-				 else {
-					  //thisChat.trace("get_user_list client.room WAS null" );
-				 }
-				 clientId = null;
-				 res = null;
-			 }
-			 catch( e ) {
+					}
+					//thisChat.trace("room: member_count = " + userList[ client.room ].member_count);
+				}
+				else {
+					//thisChat.trace("get_user_list client.room WAS null" );
+				}
+				clientId = null;
+				res = null;
+			}
+			catch( e ) {
 				  thisChat.trace("get_user_list catch e =  " + e, 'error' );
-			 }
-		 };
-
-		 this.zeroPad = function(nr,base) {
+			}
+		};
+		 
+		this.zeroPad = function(nr,base) {
 			try {
 				len = ( String( base ).length - String( nr ).length ) + 1;
 				if ( arrlen != null ) {
@@ -334,10 +495,3 @@ amLiveChat = (function () {
 
 exports.amLiveChat = amLiveChat;
 
-module.exports = function (parent) {
-    return child = {
-        target: function() {
-            parent.f();
-        }
-    };
-}
